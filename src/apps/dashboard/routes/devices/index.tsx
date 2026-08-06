@@ -55,7 +55,8 @@ export const Component = () => {
     const theme = useTheme();
 
     const [ isDeleteConfirmOpen, setIsDeleteConfirmOpen ] = useState(false);
-    const [ isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen ] = useState(false);
+    const [ isDeleteSelectedConfirmOpen, setIsDeleteSelectedConfirmOpen ] = useState(false);
+    const [ isDeleteCurrentSessionConfirmOpen, setIsDeleteCurrentSessionConfirmOpen ] = useState(false);
     const [ pendingDeleteDeviceId, setPendingDeleteDeviceId ] = useState<string>();
     const deleteDevice = useDeleteDevice();
     const updateDevice = useUpdateDevice();
@@ -84,32 +85,21 @@ export const Component = () => {
         }
     }, [ deleteDevice, onCloseDeleteConfirmDialog, pendingDeleteDeviceId ]);
 
-    const onDeleteAll = useCallback(() => {
-        setIsDeleteAllConfirmOpen(true);
+    const onOpenDeleteSelectedConfirmDialog = useCallback(() => {
+        setIsDeleteSelectedConfirmOpen(true);
     }, []);
 
-    const onCloseDeleteAllConfirmDialog = useCallback(() => {
-        setIsDeleteAllConfirmOpen(false);
+    const onCloseDeleteSelectedConfirmDialog = useCallback(() => {
+        setIsDeleteSelectedConfirmOpen(false);
     }, []);
 
-    const onConfirmDeleteAll = useCallback(() => {
-        if (devices) {
-            Promise
-                .all(devices.map(item => {
-                    const isCurrentDevice = api && item.Id && api.deviceInfo.id === item.Id;
-                    if (item.Id && !isCurrentDevice) {
-                        return deleteDevice.mutateAsync({ id: [item.Id] });
-                    }
-                    return Promise.resolve();
-                }))
-                .catch(err => {
-                    console.error('[DevicesPage] failed deleting all devices', err);
-                })
-                .finally(() => {
-                    onCloseDeleteAllConfirmDialog();
-                });
-        }
-    }, [ api, deleteDevice, devices, onCloseDeleteAllConfirmDialog ]);
+    const onOpenDeleteCurrentSessionConfirmDialog = useCallback(() => {
+        setIsDeleteCurrentSessionConfirmOpen(true);
+    }, []);
+
+    const onCloseDeleteCurrentSessionConfirmDialog = useCallback(() => {
+        setIsDeleteCurrentSessionConfirmOpen(false);
+    }, []);
 
     const UserCell = getUserCell(users);
 
@@ -177,6 +167,9 @@ export const Component = () => {
 
         // Do not reset the page index when refetching data
         autoResetPageIndex: !isRefetching,
+
+        enableRowSelection: row => row.original.Id !== api?.deviceInfo.id,
+        enableMultiRowSelection: true,
 
         // Editing device name
         enableEditing: true,
@@ -251,16 +244,52 @@ export const Component = () => {
         },
 
         // Custom toolbar contents
-        renderTopToolbarCustomActions: () => (
-            <Button
-                color='error'
-                startIcon={<Delete />}
-                onClick={onDeleteAll}
-            >
-                {globalize.translate('DeleteAll')}
-            </Button>
-        )
+        renderTopToolbarCustomActions: ({ table }) => {
+            const hasSelection = table.getSelectedRowModel().rows.length > 0;
+            return (
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                        color='error'
+                        startIcon={<Delete />}
+                        disabled={!hasSelection}
+                        onClick={onOpenDeleteSelectedConfirmDialog}
+                    >
+                        {globalize.translate('DeleteSelected')}
+                    </Button>
+                    <Button
+                        color='error'
+                        startIcon={<Delete />}
+                        onClick={onOpenDeleteCurrentSessionConfirmDialog}
+                    >
+                        {globalize.translate('DeleteCurrentSession')}
+                    </Button>
+                </Box>
+            );
+        }
     });
+
+    const onConfirmDeleteSelected = useCallback(() => {
+        const selectedIds = mrTable.getSelectedRowModel().rows
+            .map(row => row.original.Id)
+            .filter((id): id is string => !!id);
+        if (selectedIds.length) {
+            deleteDevice.mutate({ id: selectedIds }, {
+                onSettled: () => {
+                    mrTable.resetRowSelection();
+                    setIsDeleteSelectedConfirmOpen(false);
+                }
+            });
+        }
+    }, [ mrTable, deleteDevice ]);
+
+    const onConfirmDeleteCurrentSession = useCallback(() => {
+        const currentId = api?.deviceInfo.id;
+        if (currentId) {
+            deleteDevice.mutate({ id: [ currentId ] }, {
+                onSettled: () => setIsDeleteCurrentSessionConfirmOpen(false)
+            });
+        }
+    }, [ api, deleteDevice ]);
 
     return (
         <TablePage
@@ -281,11 +310,20 @@ export const Component = () => {
                 confirmButtonText={globalize.translate('Delete')}
             />
             <ConfirmDialog
-                open={isDeleteAllConfirmOpen}
-                title={globalize.translate('HeaderDeleteDevices')}
-                text={globalize.translate('DeleteDevicesConfirmation')}
-                onCancel={onCloseDeleteAllConfirmDialog}
-                onConfirm={onConfirmDeleteAll}
+                open={isDeleteSelectedConfirmOpen}
+                title={globalize.translate('HeaderDeleteSelectedDevices')}
+                text={globalize.translate('DeleteSelectedDevicesConfirmation')}
+                onCancel={onCloseDeleteSelectedConfirmDialog}
+                onConfirm={onConfirmDeleteSelected}
+                confirmButtonColor='error'
+                confirmButtonText={globalize.translate('Delete')}
+            />
+            <ConfirmDialog
+                open={isDeleteCurrentSessionConfirmOpen}
+                title={globalize.translate('HeaderDeleteCurrentSession')}
+                text={globalize.translate('DeleteCurrentSessionConfirmation')}
+                onCancel={onCloseDeleteCurrentSessionConfirmDialog}
+                onConfirm={onConfirmDeleteCurrentSession}
                 confirmButtonColor='error'
                 confirmButtonText={globalize.translate('Delete')}
             />
