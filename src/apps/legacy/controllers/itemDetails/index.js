@@ -31,6 +31,7 @@ import { ItemAction } from 'constants/itemAction';
 import globalize from 'lib/globalize';
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import browser from 'scripts/browser';
+import deleteHelper from 'scripts/deleteHelper';
 import datetime from 'scripts/datetime';
 import dom from 'utils/dom';
 import { renderComponent } from 'utils/reactUtils';
@@ -597,6 +598,8 @@ function reloadFromItem(instance, page, params, item, user) {
     } else {
         page.querySelector('.btnSplitVersions').classList.add('hide');
     }
+
+    hideAll(page, 'btnDeleteItem', item.CanDelete === true);
 
     itemContextMenu.getCommands(getContextMenuOptions(item, user)).then(commands => {
         if (commands.length) {
@@ -1443,6 +1446,7 @@ function renderChildren(page, item) {
                     enableOverview: true,
                     enablePlayedButton: !layoutManager.mobile,
                     infoButton: !layoutManager.mobile,
+                    enableDeleteButton: true,
                     imageSize: 'large',
                     enableSideMediaInfo: false,
                     highlight: false,
@@ -1478,6 +1482,9 @@ function renderChildren(page, item) {
         }
         childrenItemsContainer.innerHTML = html;
         imageLoader.lazyChildren(childrenItemsContainer);
+        childrenItemsContainer.notifyRefreshNeeded = function () {
+            renderChildren(page, item);
+        };
         if (item.Type == 'BoxSet') {
             const collectionItemTypes = [{
                 name: globalize.translate('Movies'),
@@ -2044,6 +2051,12 @@ export default function (view, params) {
         }]);
     }
 
+    function onDeleteItemClick() {
+        deleteHelper.deleteItem({ item: currentItem, navigate: true }).catch(() => {
+            // user cancelled or error already shown by deleteHelper
+        });
+    }
+
     function onMoreCommandsClick() {
         const button = this;
         let selectedItem = view.querySelector('.selectSource').value || currentItem.Id;
@@ -2114,6 +2127,7 @@ export default function (view, params) {
         view.querySelector('.btnSplitVersions').addEventListener('click', function () {
             splitVersions(self, view, apiClient, params);
         });
+        bindAll(view, '.btnDeleteItem', 'click', onDeleteItemClick);
         bindAll(view, '.btnMoreCommands', 'click', onMoreCommandsClick);
         view.querySelector('.selectSource').addEventListener('change', function () {
             renderVideoSelections(view, self._currentPlaybackMediaSources);

@@ -13,6 +13,10 @@ config.json
 .idea
 .vs
 
+# claude
+CLAUDE.md
+.claude/
+
 # vim
 *.sw?
 
