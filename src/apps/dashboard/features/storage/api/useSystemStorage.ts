@@ -23,7 +23,11 @@ const getSystemStorageQuery = (
     refetchOnWindowFocus: false
 });
 
-export const useSystemStorage = () => {
+export const useSystemStorage = (options?: { enabled?: boolean; refetchInterval?: number }) => {
     const { api } = useApi();
-    return useQuery(getSystemStorageQuery(api));
+    return useQuery({
+        ...getSystemStorageQuery(api),
+        enabled: !!api && (options?.enabled ?? true),
+        refetchInterval: options?.refetchInterval
+    });
 };
