@@ -6,6 +6,7 @@ import { appRouter, PUBLIC_PATHS } from 'components/router/appRouter';
 import BaseToolbar from 'components/toolbar/AppToolbar';
 import ServerButton from 'components/toolbar/ServerButton';
 
+import DiskSpaceButton from './DiskSpaceButton';
 import RemotePlayButton from './RemotePlayButton';
 import SyncPlayButton from './SyncPlayButton';
 import SearchButton from './SearchButton';
@@ -39,6 +40,7 @@ const AppToolbar: FC<AppToolbarProps> = ({
                 <>
                     <SyncPlayButton />
                     <RemotePlayButton />
+                    <DiskSpaceButton />
                     <SearchButton />
                 </>
             )}
