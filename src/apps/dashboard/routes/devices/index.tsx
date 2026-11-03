@@ -18,6 +18,7 @@ import { useDevices } from 'apps/dashboard/features/devices/api/useDevices';
 import { useUpdateDevice } from 'apps/dashboard/features/devices/api/useUpdateDevice';
 import DeviceNameCell from 'apps/dashboard/features/devices/components/DeviceNameCell';
 import type { DeviceInfoCell } from 'apps/dashboard/features/devices/types/deviceInfoCell';
+import { getDeletableDeviceIds } from 'apps/dashboard/features/devices/utils/selection';
 import ConfirmDialog from 'components/ConfirmDialog';
 import { useApi } from 'hooks/useApi';
 import { type UsersRecords, useUsersDetails } from 'hooks/useUsers';
@@ -169,6 +170,8 @@ export const Component = () => {
         autoResetPageIndex: !isRefetching,
 
         enableRowSelection: row => row.original.Id !== api?.deviceInfo.id,
+        // Select-all covers every row matching the current filter, not just the visible page
+        selectAllMode: 'all',
         enableMultiRowSelection: true,
 
         // Editing device name
@@ -245,7 +248,7 @@ export const Component = () => {
 
         // Custom toolbar contents
         renderTopToolbarCustomActions: ({ table }) => {
-            const hasSelection = table.getSelectedRowModel().rows.length > 0;
+            const hasSelection = table.getFilteredSelectedRowModel().rows.length > 0;
             return (
                 <Box sx={{ display: 'flex', gap: 1 }}>
                     <Button
@@ -269,18 +272,23 @@ export const Component = () => {
     });
 
     const onConfirmDeleteSelected = useCallback(() => {
-        const selectedIds = mrTable.getSelectedRowModel().rows
-            .map(row => row.original.Id)
-            .filter((id): id is string => !!id);
-        if (selectedIds.length) {
-            deleteDevice.mutate({ id: selectedIds }, {
-                onSettled: () => {
-                    mrTable.resetRowSelection();
-                    setIsDeleteSelectedConfirmOpen(false);
-                }
-            });
+        // Only rows still matching the current filter; selections hidden by a later filter change are ignored
+        const selectedIds = getDeletableDeviceIds(
+            mrTable.getFilteredSelectedRowModel().rows.map(row => row.original),
+            api?.deviceInfo.id
+        );
+        if (!selectedIds.length) {
+            setIsDeleteSelectedConfirmOpen(false);
+            return;
         }
-    }, [ mrTable, deleteDevice ]);
+        deleteDevice.mutate({ id: selectedIds }, {
+            onError: err => console.error('[DevicesPage] failed deleting selected devices', err),
+            onSettled: () => {
+                mrTable.resetRowSelection();
+                setIsDeleteSelectedConfirmOpen(false);
+            }
+        });
+    }, [ api, mrTable, deleteDevice ]);
 
     const onConfirmDeleteCurrentSession = useCallback(() => {
         const currentId = api?.deviceInfo.id;
