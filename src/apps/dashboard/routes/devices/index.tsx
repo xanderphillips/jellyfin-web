@@ -18,6 +18,7 @@ import { useDevices } from 'apps/dashboard/features/devices/api/useDevices';
 import { useUpdateDevice } from 'apps/dashboard/features/devices/api/useUpdateDevice';
 import DeviceNameCell from 'apps/dashboard/features/devices/components/DeviceNameCell';
 import type { DeviceInfoCell } from 'apps/dashboard/features/devices/types/deviceInfoCell';
+import { getDeletableDeviceIds } from 'apps/dashboard/features/devices/utils/selection';
 import ConfirmDialog from 'components/ConfirmDialog';
 import { useApi } from 'hooks/useApi';
 import { type UsersRecords, useUsersDetails } from 'hooks/useUsers';
@@ -78,7 +79,7 @@ export const Component = () => {
     const onConfirmDelete = useCallback(() => {
         if (pendingDeleteDeviceId) {
             deleteDevice.mutate({
-                id: pendingDeleteDeviceId
+                id: [pendingDeleteDeviceId]
             }, {
                 onSettled: onCloseDeleteConfirmDialog
             });
@@ -163,6 +164,8 @@ export const Component = () => {
         // Row selection (current session row is not selectable — it has its own delete button)
         enableRowSelection: row => row.original.Id !== api?.deviceInfo.id,
         enableMultiRowSelection: true,
+        // Select-all covers every row matching the current filter, not just the visible page
+        selectAllMode: 'all',
 
         // Editing device name
         enableEditing: true,
@@ -195,7 +198,7 @@ export const Component = () => {
             }
         },
         renderRowActions: ({ row, table }) => {
-            const isDeletable = api && row.original.Id && api.deviceInfo.id === row.original.Id;
+            const isCurrentDevice = api && row.original.Id && api.deviceInfo.id === row.original.Id;
             return (
                 <Box
                     sx={{
@@ -208,14 +211,13 @@ export const Component = () => {
                 >
                     <Tooltip title={globalize.translate('Edit')}>
                         <IconButton
-                            // eslint-disable-next-line react/jsx-no-bind
                             onClick={() => table.setEditingRow(row)}
                         >
                             <Edit />
                         </IconButton>
                     </Tooltip>
                     {/* Don't include Tooltip when disabled */}
-                    {isDeletable ? (
+                    {isCurrentDevice ? (
                         <IconButton
                             color='error'
                             disabled
@@ -238,7 +240,7 @@ export const Component = () => {
 
         // Custom toolbar contents
         renderTopToolbarCustomActions: ({ table }) => {
-            const hasSelection = table.getSelectedRowModel().rows.length > 0;
+            const hasSelection = table.getFilteredSelectedRowModel().rows.length > 0;
             return (
                 <Box sx={{ display: 'flex', gap: 1 }}>
                     <Button
@@ -262,23 +264,28 @@ export const Component = () => {
     });
 
     const onConfirmDeleteSelected = useCallback(() => {
-        const selectedRows = mrTable.getSelectedRowModel().rows;
-        Promise.all(
-            selectedRows.map(row =>
-                row.original.Id ? deleteDevice.mutateAsync({ id: row.original.Id }) : Promise.resolve()
-            )
-        )
-            .catch(err => console.error('[DevicesPage] failed deleting selected devices', err))
-            .finally(() => {
+        // Only rows still matching the current filter; selections hidden by a later filter change are ignored
+        const ids = getDeletableDeviceIds(
+            mrTable.getFilteredSelectedRowModel().rows.map(row => row.original),
+            api?.deviceInfo.id
+        );
+        if (!ids.length) {
+            setIsDeleteSelectedConfirmOpen(false);
+            return;
+        }
+        deleteDevice.mutate({ id: ids }, {
+            onError: err => console.error('[DevicesPage] failed deleting selected devices', err),
+            onSettled: () => {
                 mrTable.resetRowSelection();
                 setIsDeleteSelectedConfirmOpen(false);
-            });
-    }, [ mrTable, deleteDevice ]);
+            }
+        });
+    }, [ api, mrTable, deleteDevice ]);
 
     const onConfirmDeleteCurrentSession = useCallback(() => {
         const currentId = api?.deviceInfo.id;
         if (currentId) {
-            deleteDevice.mutate({ id: currentId }, {
+            deleteDevice.mutate({ id: [currentId] }, {
                 onSettled: () => setIsDeleteCurrentSessionConfirmOpen(false)
             });
         }
